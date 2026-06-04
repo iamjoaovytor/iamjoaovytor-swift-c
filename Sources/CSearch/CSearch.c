@@ -68,12 +68,19 @@ static inline int64_t rinha_distance_squared_avx2_16(
 
 __attribute__((target("avx2"), always_inline))
 static inline int64_t rinha_hsum_epi32(__m256i pair_sums) {
-    __m128i lo = _mm256_castsi256_si128(pair_sums);
-    __m128i hi = _mm256_extracti128_si256(pair_sums, 1);
-    __m128i s = _mm_add_epi32(lo, hi);
-    s = _mm_add_epi32(s, _mm_shuffle_epi32(s, 0x4E));
-    s = _mm_add_epi32(s, _mm_shuffle_epi32(s, 0xB1));
-    return (int64_t)_mm_cvtsi128_si32(s);
+    // Widen int32 to int64 before horizontal sum to avoid overflow.
+    // Worst case per int32 lane: 20000² + 20000² = 800M (fits int32).
+    // But summing 8 lanes reaches 6.4B, which exceeds int32 max (2.15B).
+    __m128i lo128 = _mm256_castsi256_si128(pair_sums);
+    __m128i hi128 = _mm256_extracti128_si256(pair_sums, 1);
+    __m256i lo64 = _mm256_cvtepi32_epi64(lo128);
+    __m256i hi64 = _mm256_cvtepi32_epi64(hi128);
+    __m256i sum64 = _mm256_add_epi64(lo64, hi64);
+    __m128i s_lo = _mm256_castsi256_si128(sum64);
+    __m128i s_hi = _mm256_extracti128_si256(sum64, 1);
+    __m128i s = _mm_add_epi64(s_lo, s_hi);
+    s = _mm_add_epi64(s, _mm_shuffle_epi32(s, 0x4E));
+    return _mm_cvtsi128_si64(s);
 }
 
 __attribute__((target("avx2")))
