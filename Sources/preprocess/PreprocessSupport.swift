@@ -118,3 +118,8 @@ func ivfpqPath(for outputPath: String) -> String {
     let url = URL(fileURLWithPath: outputPath)
     return url.deletingPathExtension().appendingPathExtension("pq").path
 }
+
+func pkeyPath(for outputPath: String) -> String {
+    let url = URL(fileURLWithPath: outputPath)
+    return url.deletingPathExtension().appendingPathExtension("pkey").path
+}

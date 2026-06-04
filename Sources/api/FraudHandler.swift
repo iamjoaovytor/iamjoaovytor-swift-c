@@ -133,6 +133,7 @@ final class FraudHandler: ChannelInboundHandler, @unchecked Sendable {
                     in: loaded.index,
                     ivf: loaded.ivf,
                     pq: loaded.pq,
+                    pkey: loaded.pkey,
                     config: loaded.searchConfig,
                     metrics: &searchMetrics,
                     k: 5
@@ -147,6 +148,7 @@ final class FraudHandler: ChannelInboundHandler, @unchecked Sendable {
                     in: loaded.index,
                     ivf: loaded.ivf,
                     pq: loaded.pq,
+                    pkey: loaded.pkey,
                     config: loaded.searchConfig,
                     k: 5
                 )

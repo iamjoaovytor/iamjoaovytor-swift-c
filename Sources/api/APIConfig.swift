@@ -6,6 +6,7 @@ struct APIConfig: Sendable {
     let mccRiskPath: String
     let ivfPath: String
     let ivfpqPath: String
+    let pkeyPath: String
     let searchConfig: SearchConfig
     let socketPath: String?
     let useSocketHandoff: Bool
@@ -16,6 +17,7 @@ struct APIConfig: Sendable {
         mccRiskPath = env["MCC_RISK_JSON"] ?? RinhaAPI.mccRiskPathDefault
         ivfPath = env["IVF_BIN"] ?? IVFIndex.defaultPath(for: referencesPath)
         ivfpqPath = env["IVFPQ_BIN"] ?? IVFPQIndex.defaultPath(for: referencesPath)
+        pkeyPath = env["PKEY_BIN"] ?? PartitionIndex.defaultPath(for: referencesPath)
         searchConfig = SearchConfig(
             nprobe: env["IVF_NPROBE"].flatMap(Int.init) ?? 4,
             initialNprobe: env["IVF_INITIAL_NPROBE"].flatMap(Int.init),

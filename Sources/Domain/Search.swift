@@ -24,10 +24,36 @@ public enum KNN {
         in index: ReferencesIndex,
         ivf: IVFIndex? = nil,
         pq: IVFPQIndex? = nil,
+        pkey: PartitionIndex? = nil,
         config: SearchConfig = SearchConfig(),
         metrics: UnsafeMutablePointer<SearchMetrics>? = nil,
         k: Int = 5
     ) -> Int {
+        if let pkey {
+            let pk = PartitionKey.compute(for: query)
+            let (votes, worstDist) = pkey.fraudVoteCount(
+                query: query,
+                partitionKey: pk,
+                k: k
+            )
+            // If top-k is filled and result is non-ambiguous, trust the partition
+            let isUnambiguous = votes == 0 || votes == k
+            if isUnambiguous && worstDist < Int64.max {
+                return votes
+            }
+            // Fall through to IVF with worstDist hint
+            if let ivf {
+                return fraudVoteCountIVF(
+                    query: query,
+                    in: index,
+                    ivf: ivf,
+                    pq: pq,
+                    config: config,
+                    metrics: metrics,
+                    k: k
+                )
+            }
+        }
         if let ivf {
             return fraudVoteCountIVF(
                 query: query,

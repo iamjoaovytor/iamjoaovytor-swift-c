@@ -79,6 +79,47 @@ func writeIVF(
     try output.write(to: URL(fileURLWithPath: path))
 }
 
+func writePartition(
+    path: String,
+    count: Int,
+    stride: Int,
+    dim: Int,
+    offsets: [UInt32],
+    orderedVectors: [Int16],
+    orderedLabels: [UInt8]
+) throws {
+    var output = Data()
+    output.append(contentsOf: [0x52, 0x50, 0x4B, 0x59]) // "RPKY"
+    output.appendLE(UInt32(1))                            // version
+    output.appendLE(UInt64(count))
+    output.appendLE(UInt32(stride))
+    output.appendLE(UInt32(dim))
+    output.padTo(alignment: 64)                           // header = 64 bytes
+
+    // 257 offsets
+    offsets.withUnsafeBufferPointer { buffer in
+        let byteCount = offsets.count * MemoryLayout<UInt32>.size
+        buffer.baseAddress!.withMemoryRebound(to: UInt8.self, capacity: byteCount) { ptr in
+            output.append(ptr, count: byteCount)
+        }
+    }
+    output.padTo(alignment: 4096)
+
+    orderedVectors.withUnsafeBufferPointer { buffer in
+        let byteCount = orderedVectors.count * MemoryLayout<Int16>.size
+        buffer.baseAddress!.withMemoryRebound(to: UInt8.self, capacity: byteCount) { ptr in
+            output.append(ptr, count: byteCount)
+        }
+    }
+    output.padTo(alignment: 4096)
+
+    orderedLabels.withUnsafeBufferPointer { buffer in
+        output.append(buffer.baseAddress!, count: orderedLabels.count)
+    }
+
+    try output.write(to: URL(fileURLWithPath: path))
+}
+
 func writeIVFPQ(
     path: String,
     count: Int,

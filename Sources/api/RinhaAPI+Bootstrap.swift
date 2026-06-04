@@ -34,11 +34,19 @@ extension RinhaAPI {
             } else {
                 pq = nil
             }
+            let pkey: PartitionIndex?
+            if FileManager.default.fileExists(atPath: config.pkeyPath) {
+                pkey = try PartitionIndex.load(path: config.pkeyPath)
+                pkey?.warm()
+            } else {
+                pkey = nil
+            }
             index.warm()
             let loaded = LoadedState(
                 index: index,
                 ivf: ivf,
                 pq: pq,
+                pkey: pkey,
                 searchConfig: config.searchConfig,
                 vectorizer: Vectorizer(mccRisk: mccRisk)
             )
