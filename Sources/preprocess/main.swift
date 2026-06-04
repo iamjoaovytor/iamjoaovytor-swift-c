@@ -177,6 +177,7 @@ FileHandle.standardError.write(Data(
     "preprocess: wrote \(ivfOutputPath) (\(ivf.postings.count) postings, \(ivf.clusterCount) clusters) in \(String(format: "%.2f", ivfElapsed))s\n".utf8
 ))
 
+
 if ivfpqTrainingConfig.enabled {
     FileHandle.standardError.write(Data(
         "preprocess: building ivfpq (subvectors=\(ivfpqTrainingConfig.subvectorCount), sample=\(ivfpqTrainingConfig.sampleCount), iters=\(ivfpqTrainingConfig.trainIterations))\n".utf8
