@@ -201,6 +201,8 @@ public final class ReferencesIndex: @unchecked Sendable {
     /// 4 KiB so the first request never pays a page-fault stall.
     public func warm() {
         _ = madvise(UnsafeMutableRawPointer(mutating: basePointer), mappedSize, MADV_WILLNEED)
+        _ = madvise(UnsafeMutableRawPointer(mutating: basePointer), mappedSize, MADV_HUGEPAGE)
+        _ = mlock(UnsafeRawPointer(basePointer), mappedSize)
         var sink: UInt8 = 0
         var offset = 0
         let stride = ReferencesHeader.pageAlignment

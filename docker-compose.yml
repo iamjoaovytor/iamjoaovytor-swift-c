@@ -2,6 +2,9 @@ services:
   api1: &api
     image: joaovytor/iamjoaovytor-swift-c:latest
     platform: linux/amd64
+    cpuset: "0"
+    logging:
+      driver: "none"
     environment: &api_env
       IVF_NPROBE: "${IVF_NPROBE:-12}"
       IVF_INITIAL_NPROBE: "${IVF_INITIAL_NPROBE:-2}"
@@ -33,6 +36,7 @@ services:
 
   api2:
     <<: *api
+    cpuset: "1"
     environment:
       <<: *api_env
       SOCKET_PATH: "/sockets/api2.sock"
@@ -41,6 +45,9 @@ services:
 
   lb:
     image: jrblatt/so-no-forevis:v1.0.0
+    cpuset: "2,3"
+    logging:
+      driver: "none"
     ports:
       - "9999:9999"
     environment:
@@ -93,3 +100,8 @@ services:
 
 volumes:
   sockets:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=4m,uid=0,gid=0,mode=0777"

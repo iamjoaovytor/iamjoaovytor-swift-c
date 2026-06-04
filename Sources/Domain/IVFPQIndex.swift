@@ -173,6 +173,8 @@ public final class IVFPQIndex: @unchecked Sendable {
 
     public func warm() {
         _ = madvise(UnsafeMutableRawPointer(mutating: basePointer), mappedSize, MADV_WILLNEED)
+        _ = madvise(UnsafeMutableRawPointer(mutating: basePointer), mappedSize, MADV_HUGEPAGE)
+        _ = mlock(UnsafeRawPointer(basePointer), mappedSize)
         var sink: UInt8 = 0
         var offset = 0
         while offset < mappedSize {

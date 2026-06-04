@@ -160,7 +160,8 @@ extension KNN {
                         numericCast(index.header.dim),
                         numericCast(index.header.stride),
                         numericCast(k),
-                        rawNeighbors.baseAddress
+                        rawNeighbors.baseAddress,
+                        Int64.max
                     )
                     let labels = index.labels
                     var fraudVotes = 0
@@ -211,6 +212,7 @@ extension KNN {
 
             let start = Int(offsets[cluster])
             let end = Int(offsets[cluster + 1])
+            let worstDist = top.count == k ? top[k - 1].distanceSquared : Int64.max
             _ = withExactNeighborsInContiguousCluster(
                 query: query,
                 orderedVectors: orderedVectors,
@@ -218,7 +220,8 @@ extension KNN {
                 end: end,
                 stride: ivf.header.stride,
                 dim: index.header.dim,
-                k: k
+                k: k,
+                worstDist: worstDist
             ) { rawNeighbors in
                 for raw in rawNeighbors where raw.record_index >= 0 {
                     insertSwift(
@@ -255,7 +258,8 @@ extension KNN {
                     end: end,
                     stride: ivf.header.stride,
                     dim: index.header.dim,
-                    k: k
+                    k: k,
+                    worstDist: top[k - 1].distanceSquared
                 ) { rawNeighbors in
                     for raw in rawNeighbors where raw.record_index >= 0 {
                         insertSwift(

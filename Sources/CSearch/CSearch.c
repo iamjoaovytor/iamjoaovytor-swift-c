@@ -261,10 +261,12 @@ void rinha_topk_exact_i16_filtered(
     size_t dim,
     size_t stride,
     size_t k,
-    rinha_neighbor_t *out_neighbors
+    rinha_neighbor_t *out_neighbors,
+    int64_t worst_dist
 ) {
     if (k == 0 || count == 0) return;
     rinha_init_neighbors(k, out_neighbors);
+    out_neighbors[k - 1].distance_squared = worst_dist;
 
 #if defined(__x86_64__) || defined(__i386__)
     if (stride == 16 && dim <= 16 && rinha_supports_avx2()) {
@@ -294,10 +296,12 @@ void rinha_topk_exact_i16_indexed_filtered(
     size_t dim,
     size_t stride,
     size_t k,
-    rinha_neighbor_t *out_neighbors
+    rinha_neighbor_t *out_neighbors,
+    int64_t worst_dist
 ) {
     if (k == 0 || candidate_count == 0) return;
     rinha_init_neighbors(k, out_neighbors);
+    out_neighbors[k - 1].distance_squared = worst_dist;
 
 #if defined(__x86_64__) || defined(__i386__)
     if (stride == 16 && dim <= 16 && rinha_supports_avx2()) {

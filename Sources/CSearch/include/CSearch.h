@@ -41,7 +41,8 @@ void rinha_topk_exact_i16_filtered(
     size_t dim,
     size_t stride,
     size_t k,
-    rinha_neighbor_t *out_neighbors
+    rinha_neighbor_t *out_neighbors,
+    int64_t worst_dist
 );
 
 void rinha_topk_exact_i16_indexed_filtered(
@@ -52,7 +53,8 @@ void rinha_topk_exact_i16_indexed_filtered(
     size_t dim,
     size_t stride,
     size_t k,
-    rinha_neighbor_t *out_neighbors
+    rinha_neighbor_t *out_neighbors,
+    int64_t worst_dist
 );
 
 #ifdef __cplusplus

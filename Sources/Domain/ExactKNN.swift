@@ -68,7 +68,8 @@ extension KNN {
                     numericCast(dim),
                     numericCast(stride),
                     numericCast(min(k, candidateCount)),
-                    rawNeighbors.baseAddress
+                    rawNeighbors.baseAddress,
+                    Int64.max
                 )
                 let rawCount = min(k, candidateCount)
                 let rawBuffer = UnsafeBufferPointer(start: rawNeighbors.baseAddress, count: rawCount)
@@ -95,6 +96,7 @@ extension KNN {
         stride: Int,
         dim: Int,
         k: Int,
+        worstDist: Int64 = Int64.max,
         _ body: (UnsafeBufferPointer<rinha_neighbor_t>) -> T
     ) -> T? {
         let candidateCount = end - start
@@ -110,7 +112,8 @@ extension KNN {
                     numericCast(dim),
                     numericCast(stride),
                     numericCast(min(k, candidateCount)),
-                    rawNeighbors.baseAddress
+                    rawNeighbors.baseAddress,
+                    worstDist
                 )
                 let rawCount = min(k, candidateCount)
                 return body(UnsafeBufferPointer(start: rawNeighbors.baseAddress, count: rawCount))
@@ -140,7 +143,8 @@ extension KNN {
                     numericCast(index.header.dim),
                     numericCast(index.header.stride),
                     numericCast(k),
-                    rawNeighbors.baseAddress
+                    rawNeighbors.baseAddress,
+                    Int64.max
                 )
                 let rawCount = min(k, candidateCount)
                 let rawBuffer = UnsafeBufferPointer(start: rawNeighbors.baseAddress, count: rawCount)
