@@ -50,23 +50,6 @@ static inline int64_t rinha_distance_squared_scalar(
 
 #if defined(__x86_64__) || defined(__i386__)
 __attribute__((target("avx2"), always_inline))
-static inline int64_t rinha_distance_squared_avx2_16(
-    __m256i q,
-    const int16_t *record
-) {
-    __m256i r = _mm256_loadu_si256((const __m256i *)record);
-    __m256i diff = _mm256_sub_epi16(q, r);
-    __m256i pair_sums = _mm256_madd_epi16(diff, diff);
-    // Horizontal sum of 8 int32s in pair_sums.
-    __m128i lo = _mm256_castsi256_si128(pair_sums);
-    __m128i hi = _mm256_extracti128_si256(pair_sums, 1);
-    __m128i s = _mm_add_epi32(lo, hi);
-    s = _mm_add_epi32(s, _mm_shuffle_epi32(s, 0x4E));
-    s = _mm_add_epi32(s, _mm_shuffle_epi32(s, 0xB1));
-    return (int64_t)_mm_cvtsi128_si32(s);
-}
-
-__attribute__((target("avx2"), always_inline))
 static inline int64_t rinha_hsum_epi32(__m256i pair_sums) {
     // Widen int32 to int64 before horizontal sum to avoid overflow.
     // Worst case per int32 lane: 20000² + 20000² = 800M (fits int32).
@@ -81,6 +64,28 @@ static inline int64_t rinha_hsum_epi32(__m256i pair_sums) {
     __m128i s = _mm_add_epi64(s_lo, s_hi);
     s = _mm_add_epi64(s, _mm_shuffle_epi32(s, 0x4E));
     return _mm_cvtsi128_si64(s);
+}
+
+// Partial hsum: sum of the lo 4 int32 pair-sums (dims 0-7) only, widened to int64.
+__attribute__((target("avx2"), always_inline))
+static inline int64_t rinha_hsum_lo4_epi32(__m256i pair_sums) {
+    __m128i lo4 = _mm256_castsi256_si128(pair_sums);
+    __m128i lo2_64 = _mm_cvtepi32_epi64(lo4);
+    __m128i hi2_64 = _mm_cvtepi32_epi64(_mm_shuffle_epi32(lo4, 0x4E));
+    __m128i s = _mm_add_epi64(lo2_64, hi2_64);
+    s = _mm_add_epi64(s, _mm_shuffle_epi32(s, 0x4E));
+    return _mm_cvtsi128_si64(s);
+}
+
+__attribute__((target("avx2"), always_inline))
+static inline int64_t rinha_distance_squared_avx2_16(
+    __m256i q,
+    const int16_t *record
+) {
+    __m256i r = _mm256_loadu_si256((const __m256i *)record);
+    __m256i diff = _mm256_sub_epi16(q, r);
+    __m256i pair_sums = _mm256_madd_epi16(diff, diff);
+    return rinha_hsum_epi32(pair_sums);
 }
 
 __attribute__((target("avx2")))
@@ -218,7 +223,13 @@ static void rinha_topk_avx2_contiguous_filtered(
         uint64_t r_mask = 0;
         memcpy(&r_mask, ((const char *)r) + 18, 6);
         if (r_mask != q_mask) continue;
-        int64_t distance_squared = rinha_distance_squared_avx2_16(q, r);
+        __m256i rv = _mm256_loadu_si256((const __m256i *)r);
+        __m256i diff = _mm256_sub_epi16(q, rv);
+        __m256i pair_sums = _mm256_madd_epi16(diff, diff);
+        // Early exit: if partial distance from dims 0-7 already >= worst, skip full hsum.
+        int64_t partial = rinha_hsum_lo4_epi32(pair_sums);
+        if (partial >= out_neighbors[k - 1].distance_squared) continue;
+        int64_t distance_squared = rinha_hsum_epi32(pair_sums);
         rinha_neighbor_t candidate = {
             .record_index = (int32_t)i,
             .distance_squared = distance_squared,
@@ -251,7 +262,12 @@ static void rinha_topk_avx2_indexed_filtered(
         uint64_t r_mask = 0;
         memcpy(&r_mask, ((const char *)r) + 18, 6);
         if (r_mask != q_mask) continue;
-        int64_t distance_squared = rinha_distance_squared_avx2_16(q, r);
+        __m256i rv = _mm256_loadu_si256((const __m256i *)r);
+        __m256i diff = _mm256_sub_epi16(q, rv);
+        __m256i pair_sums = _mm256_madd_epi16(diff, diff);
+        int64_t partial = rinha_hsum_lo4_epi32(pair_sums);
+        if (partial >= out_neighbors[k - 1].distance_squared) continue;
+        int64_t distance_squared = rinha_hsum_epi32(pair_sums);
         rinha_neighbor_t candidate = {
             .record_index = (int32_t)record_index,
             .distance_squared = distance_squared,
