@@ -7,6 +7,26 @@ final class FraudHandler: ChannelInboundHandler, @unchecked Sendable {
     typealias InboundIn = HTTPServerRequestPart
     typealias OutboundOut = HTTPServerResponsePart
 
+    private static let responseBodyBytes: [ContiguousArray<UInt8>] =
+        FraudScoring.responseBodies.map { ContiguousArray($0.utf8) }
+
+    private static let responseHeadsKeepAlive: [HTTPResponseHead] =
+        FraudScoring.responseBodies.map { body in
+            var headers = HTTPHeaders()
+            headers.add(name: "content-type", value: "application/json")
+            headers.add(name: "content-length", value: "\(body.utf8.count)")
+            return HTTPResponseHead(version: .http1_1, status: .ok, headers: headers)
+        }
+
+    private static let responseHeadsClose: [HTTPResponseHead] =
+        FraudScoring.responseBodies.map { body in
+            var headers = HTTPHeaders()
+            headers.add(name: "content-type", value: "application/json")
+            headers.add(name: "content-length", value: "\(body.utf8.count)")
+            headers.add(name: "connection", value: "close")
+            return HTTPResponseHead(version: .http1_1, status: .ok, headers: headers)
+        }
+
     private let state: LoaderState
     private let debugStats: DebugStatsCollector
     private var head: HTTPRequestHead?
@@ -133,13 +153,29 @@ final class FraudHandler: ChannelInboundHandler, @unchecked Sendable {
             }
             metrics.searchNs = DispatchTime.now().uptimeNanoseconds - searchStarted
             let responseStarted = DispatchTime.now().uptimeNanoseconds
-            writeJSONString(context: context, status: .ok, body: FraudScoring.responseBody(fraudVoteCount: rawFraudVotes), keepAlive: keepAlive)
+            writeFraudResponse(context: context, votes: rawFraudVotes, keepAlive: keepAlive)
             metrics.responseNs = DispatchTime.now().uptimeNanoseconds - responseStarted
             debugStats.record(metrics)
         } catch {
             metrics.failed = true
             writeJSONString(context: context, status: .ok, body: RinhaAPI.fallbackBody, keepAlive: keepAlive)
             debugStats.record(metrics)
+        }
+    }
+
+    private func writeFraudResponse(context: ChannelHandlerContext, votes: Int, keepAlive: Bool) {
+        let bytes = FraudHandler.responseBodyBytes[votes]
+        var buf = context.channel.allocator.buffer(capacity: bytes.count)
+        buf.writeBytes(bytes)
+        let head = keepAlive ? FraudHandler.responseHeadsKeepAlive[votes] : FraudHandler.responseHeadsClose[votes]
+        context.write(wrapOutboundOut(.head(head)), promise: nil)
+        context.write(wrapOutboundOut(.body(.byteBuffer(buf))), promise: nil)
+        if keepAlive {
+            context.writeAndFlush(wrapOutboundOut(.end(nil)), promise: nil)
+        } else {
+            let promise = context.eventLoop.makePromise(of: Void.self)
+            context.writeAndFlush(wrapOutboundOut(.end(nil)), promise: promise)
+            promise.futureResult.whenComplete { _ in context.close(promise: nil) }
         }
     }
 

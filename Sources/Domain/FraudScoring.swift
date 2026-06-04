@@ -1,6 +1,6 @@
 public enum FraudScoring {
     public static let approvalThreshold: Double = 0.5
-    private static let responseBodies = [
+    public static let responseBodies = [
         #"{"approved":true,"fraud_score":0.0}"#,
         #"{"approved":true,"fraud_score":0.2}"#,
         #"{"approved":true,"fraud_score":0.4}"#,
