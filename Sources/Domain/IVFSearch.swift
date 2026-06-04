@@ -11,12 +11,13 @@ extension KNN {
         metrics: UnsafeMutablePointer<SearchMetrics>?,
         k: Int
     ) -> Int {
+        let probeInitial = isObvious(query: query) ? 1 : config.initialNprobe
         let initialVotes = fraudVoteCountIVF(
             query: query,
             in: index,
             ivf: ivf,
             pq: pq,
-            nprobe: config.initialNprobe,
+            nprobe: probeInitial,
             useBoundingBoxes: config.useBoundingBoxes,
             ivfpqRerankCandidates: config.ivfpqRerankCandidates,
             metrics: metrics,
