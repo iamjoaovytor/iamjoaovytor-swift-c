@@ -235,6 +235,9 @@ extension KNN {
                     )
                 }
             }
+            if top.count == k && top[k - 1].distanceSquared <= SearchConfig.earlyDistanceLimit {
+                break
+            }
         }
 
         if useBoundingBoxes,

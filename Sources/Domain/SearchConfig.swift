@@ -55,6 +55,11 @@ public struct SearchConfig: Sendable {
         useBoundingBoxes || useBoundingBoxesOnExpandedSearch
     }
 
+    // If the k-th nearest neighbor's distance² is ≤ this value, the result is
+    // confident enough to stop scanning further clusters. Derived semantically:
+    // 0.14 normalized distance → 1400 quantized (scale=10000) → 1400² = 1_960_000.
+    public static let earlyDistanceLimit: Int64 = 1_960_000
+
     public var ivfpqEnabled: Bool {
         if let ivfpqRerankCandidates {
             return ivfpqRerankCandidates > 5
