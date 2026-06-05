@@ -71,6 +71,7 @@ extension KNN {
             nprobe: currentNprobe,
             useBoundingBoxes: config.useBoundingBoxes,
             ivfpqRerankCandidates: config.ivfpqRerankCandidates,
+            voteEarlyExitLimit: config.voteEarlyExitLimit,
             metrics: metrics,
             k: k
         )
@@ -86,6 +87,7 @@ extension KNN {
                 nprobe: currentNprobe,
                 useBoundingBoxes: config.expandedSearchUsesBoundingBoxes(),
                 ivfpqRerankCandidates: config.ivfpqRerankCandidates,
+                voteEarlyExitLimit: config.voteEarlyExitLimit,
                 metrics: metrics,
                 k: k
             )
@@ -103,6 +105,7 @@ extension KNN {
         nprobe: Int,
         useBoundingBoxes: Bool,
         ivfpqRerankCandidates: Int?,
+        voteEarlyExitLimit: Int64 = 0,
         metrics: UnsafeMutablePointer<SearchMetrics>?,
         k: Int
     ) -> Int {
@@ -135,6 +138,7 @@ extension KNN {
                 orderedVectors: orderedVectors,
                 orderedLabels: orderedLabels,
                 useBoundingBoxes: useBoundingBoxes,
+                voteEarlyExitLimit: voteEarlyExitLimit,
                 metrics: metrics,
                 k: k
             )
@@ -221,6 +225,7 @@ extension KNN {
         orderedVectors: UnsafeBufferPointer<Int16>,
         orderedLabels: UnsafeBufferPointer<UInt8>,
         useBoundingBoxes: Bool,
+        voteEarlyExitLimit: Int64 = 0,
         metrics: UnsafeMutablePointer<SearchMetrics>?,
         k: Int
     ) -> Int {
@@ -271,8 +276,14 @@ extension KNN {
                     )
                 }
             }
-            if top.count == k && top[k - 1].distanceSquared <= SearchConfig.earlyDistanceLimit {
-                break
+            if top.count == k {
+                let worstDistSq = top[k - 1].distanceSquared
+                if worstDistSq <= SearchConfig.earlyDistanceLimit { break }
+                if voteEarlyExitLimit > 0 && worstDistSq <= voteEarlyExitLimit {
+                    var fraudVotes = 0
+                    for neighbor in top where orderedLabels[neighbor.recordIndex] == 1 { fraudVotes += 1 }
+                    if fraudVotes == 0 || fraudVotes == k { break }
+                }
             }
         }
 

@@ -27,7 +27,8 @@ struct APIConfig: Sendable {
             ivfpqRerankCandidates: env["IVFPQ_RERANK_CANDIDATES"].flatMap(Int.init),
             useBoundingBoxes: env["IVF_USE_BBOX"] == "1",
             expandOnUnanimousInitialVotes: env["IVF_ADAPTIVE_EXPAND_UNANIMOUS"] == "1",
-            useBoundingBoxesOnExpandedSearch: env["IVF_ADAPTIVE_EXPANDED_USE_BBOX"] == "1"
+            useBoundingBoxesOnExpandedSearch: env["IVF_ADAPTIVE_EXPANDED_USE_BBOX"] == "1",
+            voteEarlyExitLimit: env["IVF_VOTE_EARLY_EXIT_LIMIT"].flatMap(Int64.init) ?? 0
         )
         socketPath = env["SOCKET_PATH"].flatMap { $0.isEmpty ? nil : $0 }
         useSocketHandoff = env["SOCKET_HANDOFF"] == "1"
