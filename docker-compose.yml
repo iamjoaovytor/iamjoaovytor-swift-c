@@ -24,8 +24,6 @@ services:
       - sockets:/sockets
     cpus: "0.35"
     mem_limit: "130MB"
-    security_opt:
-      - seccomp:unconfined
     ulimits:
       nofile:
         soft: 65535
@@ -61,8 +59,6 @@ services:
       - sockets:/sockets
     cpus: "0.26"
     mem_limit: "78MB"
-    security_opt:
-      - seccomp:unconfined
     ulimits:
       nofile:
         soft: 65535
