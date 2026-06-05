@@ -5,27 +5,46 @@ import NIOHTTP1
 
 final class FraudHandler: ChannelInboundHandler, @unchecked Sendable {
     typealias InboundIn = HTTPServerRequestPart
-    typealias OutboundOut = HTTPServerResponsePart
+    // IOData bypasses HTTPResponseEncoder — write pre-serialized bytes directly to the socket.
+    typealias OutboundOut = IOData
 
-    private static let responseBodyBytes: [ContiguousArray<UInt8>] =
-        FraudScoring.responseBodies.map { ContiguousArray($0.utf8) }
-
-    private static let responseHeadsKeepAlive: [HTTPResponseHead] =
-        FraudScoring.responseBodies.map { body in
-            var headers = HTTPHeaders()
-            headers.add(name: "content-type", value: "application/json")
-            headers.add(name: "content-length", value: "\(body.utf8.count)")
-            return HTTPResponseHead(version: .http1_1, status: .ok, headers: headers)
+    // Full HTTP responses pre-serialized: status line + headers + body in one buffer.
+    // Eliminates HTTPResponseEncoder overhead (header iteration + 3 write() calls → 1).
+    private static let prebuiltKeepAlive: [ByteBuffer] = {
+        let alloc = ByteBufferAllocator()
+        return FraudScoring.responseBodies.map { body in
+            let header = "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: \(body.utf8.count)\r\n\r\n"
+            var buf = alloc.buffer(capacity: header.utf8.count + body.utf8.count)
+            buf.writeString(header)
+            buf.writeString(body)
+            return buf
         }
+    }()
 
-    private static let responseHeadsClose: [HTTPResponseHead] =
-        FraudScoring.responseBodies.map { body in
-            var headers = HTTPHeaders()
-            headers.add(name: "content-type", value: "application/json")
-            headers.add(name: "content-length", value: "\(body.utf8.count)")
-            headers.add(name: "connection", value: "close")
-            return HTTPResponseHead(version: .http1_1, status: .ok, headers: headers)
+    private static let prebuiltClose: [ByteBuffer] = {
+        let alloc = ByteBufferAllocator()
+        return FraudScoring.responseBodies.map { body in
+            let header = "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: \(body.utf8.count)\r\nconnection: close\r\n\r\n"
+            var buf = alloc.buffer(capacity: header.utf8.count + body.utf8.count)
+            buf.writeString(header)
+            buf.writeString(body)
+            return buf
         }
+    }()
+
+    private static let readyOK: ByteBuffer = {
+        let s = "HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n"
+        var buf = ByteBufferAllocator().buffer(capacity: s.utf8.count)
+        buf.writeString(s)
+        return buf
+    }()
+
+    private static let readyNotReady: ByteBuffer = {
+        let s = "HTTP/1.1 503 Service Unavailable\r\ncontent-length: 0\r\n\r\n"
+        var buf = ByteBufferAllocator().buffer(capacity: s.utf8.count)
+        buf.writeString(s)
+        return buf
+    }()
 
     private let state: LoaderState
     private let debugStats: DebugStatsCollector
@@ -166,60 +185,54 @@ final class FraudHandler: ChannelInboundHandler, @unchecked Sendable {
     }
 
     private func writeFraudResponse(context: ChannelHandlerContext, votes: Int, keepAlive: Bool) {
-        let bytes = FraudHandler.responseBodyBytes[votes]
-        var buf = context.channel.allocator.buffer(capacity: bytes.count)
-        buf.writeBytes(bytes)
-        let head = keepAlive ? FraudHandler.responseHeadsKeepAlive[votes] : FraudHandler.responseHeadsClose[votes]
-        context.write(wrapOutboundOut(.head(head)), promise: nil)
-        context.write(wrapOutboundOut(.body(.byteBuffer(buf))), promise: nil)
+        let buf = keepAlive ? FraudHandler.prebuiltKeepAlive[votes] : FraudHandler.prebuiltClose[votes]
         if keepAlive {
-            context.writeAndFlush(wrapOutboundOut(.end(nil)), promise: nil)
+            context.writeAndFlush(wrapOutboundOut(.byteBuffer(buf)), promise: nil)
         } else {
             let promise = context.eventLoop.makePromise(of: Void.self)
-            context.writeAndFlush(wrapOutboundOut(.end(nil)), promise: promise)
+            context.writeAndFlush(wrapOutboundOut(.byteBuffer(buf)), promise: promise)
+            promise.futureResult.whenComplete { _ in context.close(promise: nil) }
+        }
+    }
+
+    private func writeRawBuffer(context: ChannelHandlerContext, buf: ByteBuffer, keepAlive: Bool) {
+        if keepAlive {
+            context.writeAndFlush(wrapOutboundOut(.byteBuffer(buf)), promise: nil)
+        } else {
+            let promise = context.eventLoop.makePromise(of: Void.self)
+            context.writeAndFlush(wrapOutboundOut(.byteBuffer(buf)), promise: promise)
             promise.futureResult.whenComplete { _ in context.close(promise: nil) }
         }
     }
 
     private func writeJSONString(context: ChannelHandlerContext, status: HTTPResponseStatus, body: String, keepAlive: Bool) {
-        var buf = context.channel.allocator.buffer(capacity: body.utf8.count)
-        buf.writeString(body)
-        writeJSON(context: context, status: status, buffer: buf, keepAlive: keepAlive)
+        let close = keepAlive ? "" : "connection: close\r\n"
+        let s = "HTTP/1.1 \(status.code) \(status.reasonPhrase)\r\ncontent-type: application/json\r\ncontent-length: \(body.utf8.count)\r\n\(close)\r\n\(body)"
+        var buf = context.channel.allocator.buffer(capacity: s.utf8.count)
+        buf.writeString(s)
+        writeRawBuffer(context: context, buf: buf, keepAlive: keepAlive)
     }
 
     private func writeJSON(context: ChannelHandlerContext, status: HTTPResponseStatus, buffer: ByteBuffer, keepAlive: Bool) {
-        var headers = HTTPHeaders()
-        headers.add(name: "content-type", value: "application/json")
-        headers.add(name: "content-length", value: "\(buffer.readableBytes)")
-        if !keepAlive { headers.add(name: "connection", value: "close") }
-        let head = HTTPResponseHead(version: .http1_1, status: status, headers: headers)
-        context.write(wrapOutboundOut(.head(head)), promise: nil)
-        context.write(wrapOutboundOut(.body(.byteBuffer(buffer))), promise: nil)
-        if keepAlive {
-            context.writeAndFlush(wrapOutboundOut(.end(nil)), promise: nil)
-        } else {
-            let promise = context.eventLoop.makePromise(of: Void.self)
-            context.writeAndFlush(wrapOutboundOut(.end(nil)), promise: promise)
-            promise.futureResult.whenComplete { _ in
-                context.close(promise: nil)
-            }
-        }
+        let close = keepAlive ? "" : "connection: close\r\n"
+        let header = "HTTP/1.1 \(status.code) \(status.reasonPhrase)\r\ncontent-type: application/json\r\ncontent-length: \(buffer.readableBytes)\r\n\(close)\r\n"
+        var buf = context.channel.allocator.buffer(capacity: header.utf8.count + buffer.readableBytes)
+        buf.writeString(header)
+        var body = buffer
+        buf.writeBuffer(&body)
+        writeRawBuffer(context: context, buf: buf, keepAlive: keepAlive)
     }
 
     private func writeEmpty(context: ChannelHandlerContext, status: HTTPResponseStatus, keepAlive: Bool) {
-        var headers = HTTPHeaders()
-        headers.add(name: "content-length", value: "0")
-        if !keepAlive { headers.add(name: "connection", value: "close") }
-        let head = HTTPResponseHead(version: .http1_1, status: status, headers: headers)
-        context.write(wrapOutboundOut(.head(head)), promise: nil)
-        if keepAlive {
-            context.writeAndFlush(wrapOutboundOut(.end(nil)), promise: nil)
+        if status == .ok {
+            writeRawBuffer(context: context, buf: FraudHandler.readyOK, keepAlive: keepAlive)
+        } else if status == .serviceUnavailable {
+            writeRawBuffer(context: context, buf: FraudHandler.readyNotReady, keepAlive: keepAlive)
         } else {
-            let promise = context.eventLoop.makePromise(of: Void.self)
-            context.writeAndFlush(wrapOutboundOut(.end(nil)), promise: promise)
-            promise.futureResult.whenComplete { _ in
-                context.close(promise: nil)
-            }
+            let s = "HTTP/1.1 \(status.code) \(status.reasonPhrase)\r\ncontent-length: 0\r\n\r\n"
+            var buf = context.channel.allocator.buffer(capacity: s.utf8.count)
+            buf.writeString(s)
+            writeRawBuffer(context: context, buf: buf, keepAlive: keepAlive)
         }
     }
 }

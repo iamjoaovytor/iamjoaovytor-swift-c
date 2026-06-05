@@ -10,9 +10,10 @@ extension RinhaAPI {
         debugStats: DebugStatsCollector
     ) -> @Sendable (Channel) -> EventLoopFuture<Void> {
         { channel in
-            channel.pipeline.configureHTTPServerPipeline(withErrorHandling: true).flatMap {
-                channel.pipeline.addHandler(FraudHandler(state: state, debugStats: debugStats))
-            }
+            channel.pipeline.addHandlers([
+                ByteToMessageHandler(HTTPRequestDecoder()),
+                FraudHandler(state: state, debugStats: debugStats),
+            ])
         }
     }
 
