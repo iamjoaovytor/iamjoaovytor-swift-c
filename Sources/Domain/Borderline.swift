@@ -21,13 +21,6 @@ extension KNN {
            query[12] <= 3000    // mcc_risk ≤ 0.30
         { return true }
 
-        // ultra-legit: micro purchase at known merchant with very safe MCC and minimal activity
-        if query[0] <= 100 &&   // amount ≤ $100
-           query[8] <= 1000 &&  // tx_count_24h ≤ 2
-           query[11] == 0 &&    // known merchant
-           query[12] <= 1000    // mcc_risk ≤ 0.10
-        { return true }
-
         // obvious fraud: high amount, many installments, far from home,
         // many txs, unknown merchant, risky MCC — all conditions must hold
         if query[0] >= 5000 &&   // amount ≥ $5000
