@@ -1,6 +1,6 @@
 services:
   api1: &api
-    image: joaovytor/iamjoaovytor-swift-c:latest
+    image: joaovytor/swift-c-fraud-detector:latest
     platform: linux/amd64
     cpuset: "0"
     logging:
