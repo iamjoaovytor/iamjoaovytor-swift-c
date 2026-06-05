@@ -8,7 +8,7 @@ enum Preprocess {
     static let layoutAoS: UInt32 = 0
     static let headerBytes = 128
     static let pageAlignment = 4096
-    static let defaultIVFClusters = 1024
+    static let defaultIVFClusters = 2048
     static let defaultIVFTrainSample = 262_144
     static let defaultIVFTrainIterations = 8
     static let defaultIVFFullRefineIterations = 0
