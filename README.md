@@ -29,9 +29,7 @@ Everything is stored page-aligned for `mmap` — zero-copy loading at startup, n
 Each request goes through a tiered pipeline:
 
 ```
-Request → Vectorize → isObvious? → fast path (nprobe=1)
-                    ↓
-              IVF centroid scan (K=2048, once per query)
+Request → Vectorize → IVF centroid scan (K=2048, once per query)
                     ↓
          Adaptive 3-tier nprobe: 2 → 8 → 16
               (expand only if result is ambiguous)
@@ -46,7 +44,6 @@ Request → Vectorize → isObvious? → fast path (nprobe=1)
 
 - **AVX2 SIMD distance kernel** (C) — hand-vectorized L2² via `_mm256_madd_epi16`, processes 16 `Int16` lanes in a single instruction
 - **Single centroid scan** — one O(K) scan for max nprobe, reused across adaptive tiers via prefix slicing
-- **isObvious() fast path** — semantically derived patterns (e.g. micro-purchase at known merchant with safe MCC) bypass the full IVF pipeline entirely, using only nprobe=1
 - **Vote-based early exit** — stops scanning clusters when top-k is already unanimous and close enough (dist² ≤ 2,500,000)
 - **Pre-serialized HTTP responses** — all 6 possible outcomes (0/5 to 5/5 fraud votes) are pre-built as raw bytes at startup, bypassing the NIO HTTP encoder on the hot path
 - **PGO** (Profile-Guided Optimization) — the Docker image is built with an instrumentation pass over real workloads, then recompiled with the profile data
@@ -59,11 +56,19 @@ Request → Vectorize → isObvious? → fast path (nprobe=1)
 
 ## Results
 
+Local bench (synthetic dataset, Linux server):
+
 | Bench | p99 | fp | fn | Score |
 |-------|-----|----|----|-------|
 | ×1    | 0.53ms | 0 | 0 | 6000 |
 | ×2    | 0.51ms | 0 | 0 | 6000 |
 | ×4    | 0.50ms | 0 | 0 | 6000 |
+
+Official test (54,100 entries, 645 edge cases):
+
+| Run | p99 | fp | fn | Score |
+|-----|-----|----|----|-------|
+| preview | 0.63ms | 0 | 0 | 6000 |
 
 Perfect accuracy at 900–3600 req/s sustained load.
 
