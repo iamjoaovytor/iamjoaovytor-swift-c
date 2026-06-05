@@ -1,7 +1,7 @@
 {
     "participants": ["João Vitor Sousa"],
     "social": ["https://github.com/iamjoaovytor"],
-    "source-code-repo": "https://github.com/iamjoaovytor/iamjoaovytor-swift-c",
+    "source-code-repo": "https://github.com/iamjoaovytor/swift-c-fraud-detector",
     "stack": ["swift", "c", "so-no-forevis"],
     "open_to_work": false
 }

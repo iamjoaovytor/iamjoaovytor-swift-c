@@ -46,7 +46,7 @@ services:
       - sockets:/sockets
 
   lb:
-    image: jrblatt/so-no-forevis:v1.0.0
+    image: jrblatt/so-no-forevis:v1.0.1
     cpuset: "2,3"
     logging:
       driver: "none"
