@@ -11,66 +11,102 @@ extension KNN {
         metrics: UnsafeMutablePointer<SearchMetrics>?,
         k: Int
     ) -> Int {
-        let probeInitial = isObvious(query: query) ? 1 : config.initialNprobe
-        let initialVotes = fraudVoteCountIVF(
-            query: query,
-            in: index,
-            ivf: ivf,
-            pq: pq,
-            nprobe: probeInitial,
-            useBoundingBoxes: config.useBoundingBoxes,
-            ivfpqRerankCandidates: config.ivfpqRerankCandidates,
-            metrics: metrics,
-            k: k
-        )
-        guard config.shouldExpand(after: initialVotes) else {
-            return initialVotes
-        }
-        metrics?.pointee.adaptiveExpandCount &+= 1
-        return fraudVoteCountIVF(
-            query: query,
-            in: index,
-            ivf: ivf,
-            pq: pq,
-            nprobe: config.nprobe,
-            useBoundingBoxes: config.expandedSearchUsesBoundingBoxes(),
-            ivfpqRerankCandidates: config.ivfpqRerankCandidates,
-            metrics: metrics,
-            k: k
-        )
-    }
-
-    static func fraudVoteCountIVF(
-        query: [Int16],
-        in index: ReferencesIndex,
-        ivf: IVFIndex,
-        pq: IVFPQIndex?,
-        nprobe: Int,
-        useBoundingBoxes: Bool,
-        ivfpqRerankCandidates: Int?,
-        metrics: UnsafeMutablePointer<SearchMetrics>?,
-        k: Int
-    ) -> Int {
-        let clusterCount = ivf.header.clusterCount
-        let nprobe = min(max(1, nprobe), clusterCount)
         precondition(k > 0, "k must be positive")
+        let clusterCount = ivf.header.clusterCount
 
+        // Fast path: obvious queries do a minimal centroid scan (top-1 only) with no expansion.
+        if isObvious(query: query) {
+            let centroidStarted = metricStart(metrics)
+            let obviousNeighbor = query.withUnsafeBufferPointer { queryBuffer in
+                withUnsafeTemporaryAllocation(of: rinha_neighbor_t.self, capacity: 1) { rawNeighbors in
+                    rinha_topk_exact_i16(
+                        queryBuffer.baseAddress,
+                        ivf.centroids.baseAddress,
+                        numericCast(clusterCount),
+                        numericCast(index.header.dim),
+                        numericCast(ivf.header.stride),
+                        1,
+                        rawNeighbors.baseAddress
+                    )
+                    return Array(UnsafeBufferPointer(start: rawNeighbors.baseAddress, count: 1))
+                }
+            }
+            metricRecord(centroidStarted, keyPath: \.centroidSearchNs, metrics: metrics)
+            return fraudVoteCountIVF(
+                query: query, in: index, ivf: ivf, pq: pq,
+                centroidNeighbors: obviousNeighbor,
+                nprobe: 1,
+                useBoundingBoxes: config.useBoundingBoxes,
+                ivfpqRerankCandidates: config.ivfpqRerankCandidates,
+                metrics: metrics, k: k
+            )
+        }
+
+        // Adaptive path: single centroid scan for max nprobe, reused across all tiers.
+        let maxNprobe = min(config.nprobe, clusterCount)
         let centroidStarted = metricStart(metrics)
-        let centroidNeighbors = query.withUnsafeBufferPointer { queryBuffer in
-            withUnsafeTemporaryAllocation(of: rinha_neighbor_t.self, capacity: nprobe) { rawNeighbors in
+        let allCentroidNeighbors = query.withUnsafeBufferPointer { queryBuffer in
+            withUnsafeTemporaryAllocation(of: rinha_neighbor_t.self, capacity: maxNprobe) { rawNeighbors in
                 rinha_topk_exact_i16(
                     queryBuffer.baseAddress,
                     ivf.centroids.baseAddress,
                     numericCast(clusterCount),
                     numericCast(index.header.dim),
                     numericCast(ivf.header.stride),
-                    numericCast(nprobe),
+                    numericCast(maxNprobe),
                     rawNeighbors.baseAddress
                 )
-                return Array(UnsafeBufferPointer(start: rawNeighbors.baseAddress, count: nprobe))
+                return Array(UnsafeBufferPointer(start: rawNeighbors.baseAddress, count: maxNprobe))
             }
         }
         metricRecord(centroidStarted, keyPath: \.centroidSearchNs, metrics: metrics)
+
+        var currentNprobe = config.initialNprobe
+        var votes = fraudVoteCountIVF(
+            query: query,
+            in: index,
+            ivf: ivf,
+            pq: pq,
+            centroidNeighbors: allCentroidNeighbors,
+            nprobe: currentNprobe,
+            useBoundingBoxes: config.useBoundingBoxes,
+            ivfpqRerankCandidates: config.ivfpqRerankCandidates,
+            metrics: metrics,
+            k: k
+        )
+        while let nextNprobe = config.nextProbeCount(votes: votes, currentNprobe: currentNprobe) {
+            metrics?.pointee.adaptiveExpandCount &+= 1
+            currentNprobe = nextNprobe
+            votes = fraudVoteCountIVF(
+                query: query,
+                in: index,
+                ivf: ivf,
+                pq: pq,
+                centroidNeighbors: allCentroidNeighbors,
+                nprobe: currentNprobe,
+                useBoundingBoxes: config.expandedSearchUsesBoundingBoxes(),
+                ivfpqRerankCandidates: config.ivfpqRerankCandidates,
+                metrics: metrics,
+                k: k
+            )
+        }
+        return votes
+    }
+
+    // Routes to the correct scan path using pre-computed centroid neighbors (sliced to nprobe).
+    static func fraudVoteCountIVF(
+        query: [Int16],
+        in index: ReferencesIndex,
+        ivf: IVFIndex,
+        pq: IVFPQIndex?,
+        centroidNeighbors allNeighbors: [rinha_neighbor_t],
+        nprobe: Int,
+        useBoundingBoxes: Bool,
+        ivfpqRerankCandidates: Int?,
+        metrics: UnsafeMutablePointer<SearchMetrics>?,
+        k: Int
+    ) -> Int {
+        let centroidNeighbors = nprobe < allNeighbors.count ? Array(allNeighbors.prefix(nprobe)) : allNeighbors
 
         if let orderedVectors = ivf.orderedVectors,
            let orderedLabels = ivf.orderedLabels {

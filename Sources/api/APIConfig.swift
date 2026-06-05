@@ -21,6 +21,7 @@ struct APIConfig: Sendable {
         searchConfig = SearchConfig(
             nprobe: env["IVF_NPROBE"].flatMap(Int.init) ?? 4,
             initialNprobe: env["IVF_INITIAL_NPROBE"].flatMap(Int.init),
+            midNprobe: env["IVF_MID_NPROBE"].flatMap(Int.init),
             adaptiveMinFraudVotes: env["IVF_ADAPTIVE_MIN_VOTES"].flatMap(Int.init) ?? 2,
             adaptiveMaxFraudVotes: env["IVF_ADAPTIVE_MAX_VOTES"].flatMap(Int.init) ?? 3,
             ivfpqRerankCandidates: env["IVFPQ_RERANK_CANDIDATES"].flatMap(Int.init),
