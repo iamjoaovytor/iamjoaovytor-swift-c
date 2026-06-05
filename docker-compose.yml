@@ -92,13 +92,13 @@ services:
     depends_on:
       - lb
     cpus: "0.04"
-    mem_limit: "12MB"
+    mem_limit: "8MB"
     restart: "no"
     deploy:
       resources:
         limits:
           cpus: "0.04"
-          memory: "12MB"
+          memory: "8MB"
 
 volumes:
   sockets:
